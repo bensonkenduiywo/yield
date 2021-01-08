@@ -1,0 +1,108 @@
+---
+title: "Exploration One Acre Fund Plot level data for maize yield prediction"
+author: "Benson Kenduiywo"
+date: "01/12/2020"
+output: html_document
+---
+
+```{r, global_options, tidy = TRUE,echo=TRUE}
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60))
+
+```
+
+# Introduction
+
+load the acre fund data plot level data and MODIS data
+
+```{r d1}
+rm(list=ls(all=TRUE))
+library(raster)
+library(data.table)
+f <- "D:/UCDavis/QUIIC/github/oaf_yield/oaf/KEN_oaf_8day_MODIS_vi_006_250m.csv"
+d <- fread(f)
+tail(d)
+y <- substring(d$dates, 1,4)
+table(y)
+
+shp <- shapefile("../oaf/kenya_crop_yield_oaf_2015_18.shp")
+```
+
+Merge remote sensing information to corresponding plot information i.e.:
+
+|Column|Description|
+|---|---|
+|uid|unique plot/field/farmer identifier to merge with GEE export data| 
+|Year|year of data collection|
+|Season|season of data collection|
+|Country|country of data collection|
+|yld_kg_|shelled maize grain yield in kg/ha|
+|PltSz_h|plot size in hectares|
+|CAN_kg_|CAN (topdress fertilizer) in kg/ha|
+|DAP_kg_|DAP (basal fertilizer) applied at planting) in kg/ha|
+|NPK_kg_|NPK in kg/ha|
+|Ur_kg_h|urea (topdress fertilizer) in kg/ha|
+|Variety|variety of maize planted, if known|
+|PlntngD|date of planting|
+
+Extract MODIS data corresponding to plot level years(2015--2017)
+
+```{r d2}
+i <- unique(shp$Year)
+df1 <- d[y %in% i,]
+```
+
+Aggregate plot level satellite signal per year per season (March -- September, in this case only Long Rain (LR) season only). To compute daily average signal per season in each year, we first Create a function to compute means for LR season.
+
+```{r fxn1}
+seasonMean <- function(year, df, seasons=1:2) {
+  res <- list()
+  for (i in seasons) {
+    season <- ifelse(i==1, "long", "short")
+    if (season =="long") {
+      sdate <- paste0(year, "-03-01")
+      edate <- paste0(year, "-09-30")
+      season <- "LR"
+    } else if (season =="short") {
+      sdate <- paste0(year-1, "-10-01")
+      edate <- paste0(year, "-02-28")
+      season <- "SR"
+    } else {
+      stop("Define season")
+    }
+    ydf <- df[df$dates >= sdate & df$dates <= edate, ]
+    ym <- aggregate(ydf[,1], ydf[,2, drop=FALSE], mean, na.rm=T)
+    ym$year <- year
+    ym$season <- season
+    res[[i]] <- ym    
+  }  
+  do.call(rbind, res)  
+}
+
+```
+
+
+Compute season mean satellite signal.
+
+```{r d3}
+df1$dates <- as.Date(df1$dates, format = "X%Y%m%d")
+years <- unique(format(df1$dates, format="%Y") )
+#EVI
+e <- df1[,c('EVI','uid',"dates")]
+temp <- lapply(years, seasonMean, e, seasons=1)
+e <- do.call(rbind, temp)
+#NDVI
+n <- df1[,c('NDVI','uid',"dates")]
+temp <- lapply(years, seasonMean, n, seasons=1)
+n <- do.call(rbind, temp)
+aa <- cbind(e[,c('uid','EVI')],n[,c('NDVI','year','season')])
+```
+
+
+Merge plot level yield data with MODIS data 
+
+```{r d4}
+names(shp)
+names(d)
+df2 <- merge(shp,df1,by=c("uid" ))
+```
