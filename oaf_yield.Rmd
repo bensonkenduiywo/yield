@@ -72,7 +72,7 @@ seasonMean <- function(year, df, seasons=1:2) {
     }
     ydf <- df[df$dates >= sdate & df$dates <= edate, ]
     ym <- aggregate(ydf[,1], ydf[,2, drop=FALSE], mean, na.rm=T)
-    ym$year <- year
+    ym$Year <- year
     ym$season <- season
     res[[i]] <- ym    
   }  
@@ -95,14 +95,45 @@ e <- do.call(rbind, temp)
 n <- df1[,c('NDVI','uid',"dates")]
 temp <- lapply(years, seasonMean, n, seasons=1)
 n <- do.call(rbind, temp)
-aa <- cbind(e[,c('uid','EVI')],n[,c('NDVI','year','season')])
+df2 <- cbind(e[,c('uid','EVI')],n[,c('NDVI','Year','season')])
 ```
 
-
-Merge plot level yield data with MODIS data 
+Merge plot level yield data with MODIS data. 
 
 ```{r d4}
 names(shp)
-names(d)
-df2 <- merge(shp,df1,by=c("uid" ))
+names(df2)
+df3 <- merge(df2, shp, by=c("uid","uid", "Year"))
+
 ```
+
+Explore the relationship between yield and satellite signal.
+
+```{r d5}
+x11()
+plot(df3$EVI, df3$yld_kg_, ylab="Maize yield (kg/ha)", xlab='EVI')
+x11()
+plot(df3$NDVI, df3$yld_kg_, ylab="Maize yield (kg/ha)", xlab='NDVI')
+
+```
+ 
+NOTE: Some of the yield per ha are higher than normal....On average in Kenya yields per ha range between 4--8 tonnes per hectare. 
+ 
+
+Let's fit an ordinary regression model.
+
+```{r lm1}
+#EVI
+lm1 <- lm(df3$yld_kg_~df3$EVI)
+summary(lm1)
+#NDVI
+lm2 <- lm(df3$yld_kg_~df3$NDVI)
+summary(lm2)
+
+```
+
+Model fitting is not good.
+
+ 
+
+
